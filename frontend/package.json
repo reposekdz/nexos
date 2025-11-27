@@ -1,0 +1,47 @@
+{
+  "name": "nexos-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.15.0",
+    "axios": "^1.5.0",
+    "socket.io-client": "^4.7.2",
+    "@reduxjs/toolkit": "^1.9.5",
+    "react-redux": "^8.1.2",
+    "styled-components": "^6.0.7",
+    "framer-motion": "^10.16.4",
+    "react-hook-form": "^7.45.4",
+    "react-query": "^3.39.3",
+    "react-webcam": "^7.1.1",
+    "simple-peer": "^9.11.1",
+    "emoji-picker-react": "^4.4.9",
+    "react-infinite-scroll-component": "^6.1.0",
+    "react-player": "^2.13.0",
+    "react-dropzone": "^14.2.3",
+    "@heroicons/react": "^2.0.18",
+    "lucide-react": "^0.284.0",
+    "react-hot-toast": "^2.4.1",
+    "react-intersection-observer": "^9.5.2",
+    "react-virtualized": "^9.22.5",
+    "react-spring": "^9.7.3",
+    "react-use-gesture": "^9.1.3",
+    "workbox-webpack-plugin": "^7.0.0",
+    "web-push": "^3.6.6",
+    "stripe": "^13.6.0",
+    "paypal-js": "^7.1.0"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "devDependencies": {
+    "react-scripts": "5.0.1",
+    "@types/react": "^18.2.21",
+    "@types/react-dom": "^18.2.7",
+    "typescript": "^4.9.5"
+  }
+}
