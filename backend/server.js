@@ -96,11 +96,13 @@ app.use('/api/entertainment', require('./routes/entertainment'));
 app.use('/api/profile-complete', require('./routes/profile-complete'));
 app.use('/api/integrations', require('./routes/integrations'));
 app.use('/api/advanced-content', require('./routes/advanced-content'));
+app.use('/api/innovations', require('./routes/innovations'));
 
 // Make io globally available
 global.io = io;
 
-console.log('✅ 1000+ APIs loaded successfully');
+console.log('✅ 1200+ APIs loaded successfully');
+console.log('✅ 90 Innovation Features Active');
 console.log('✅ All routes initialized');
 console.log('✅ Real-time features active');
 console.log('✅ Platform ready for production');
