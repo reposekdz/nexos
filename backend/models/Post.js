@@ -44,7 +44,35 @@ const postSchema = new mongoose.Schema({
   editHistory: [{
     content: String,
     editedAt: Date
-  }]
+  }],
+  shoppableProducts: [{
+    productId: String,
+    position: { x: Number, y: Number },
+    price: Number
+  }],
+  formatting: {
+    bold: [{ start: Number, end: Number }],
+    italic: [{ start: Number, end: Number }],
+    links: [{ start: Number, end: Number, url: String }]
+  },
+  poll: {
+    question: String,
+    options: [{ text: String, votes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }] }],
+    expiresAt: Date
+  },
+  music: {
+    id: String,
+    title: String,
+    artist: String,
+    url: String
+  },
+  taggedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  flags: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    reason: String,
+    createdAt: Date
+  }],
+  status: { type: String, enum: ['draft', 'published', 'scheduled', 'flagged'], default: 'published' }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Post', postSchema);

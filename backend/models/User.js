@@ -156,6 +156,42 @@ const userSchema = new mongoose.Schema({
   claimedRewards: [{
     rewardId: String,
     claimedAt: Date
+  }],
+  wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'MarketplaceItem' }],
+  sellerSubscriptions: [{
+    seller: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    tier: String,
+    price: Number,
+    startDate: Date
+  }],
+  storyHighlights: [{
+    name: String,
+    stories: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Story' }],
+    coverImage: String
+  }],
+  profileType: { type: String, enum: ['personal', 'business', 'creator', 'group_admin'], default: 'personal' },
+  verificationRequest: {
+    status: { type: String, enum: ['pending', 'approved', 'rejected'] },
+    documents: [String],
+    submittedAt: Date
+  },
+  customization: {
+    background: String,
+    backgroundType: { type: String, enum: ['image', 'video', 'gradient'] },
+    font: String,
+    theme: String
+  },
+  coverType: { type: String, enum: ['image', 'video'], default: 'image' },
+  avatars: [String],
+  checkins: [{
+    location: String,
+    coordinates: { lat: Number, lng: Number },
+    timestamp: Date
+  }],
+  skills: [String],
+  endorsements: [{
+    skill: String,
+    users: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
   }]
 }, { timestamps: true });
 

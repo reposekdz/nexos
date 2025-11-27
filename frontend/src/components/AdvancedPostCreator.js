@@ -1,395 +1,403 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  PhotoIcon, 
-  VideoCameraIcon, 
-  FaceSmileIcon,
-  MapPinIcon,
-  ChartBarIcon,
-  GifIcon,
-  HashtagIcon
-} from '@heroicons/react/24/outline';
-import { X, Send, Pin, Archive, Edit3 } from 'lucide-react';
-import EmojiPicker from 'emoji-picker-react';
+import { Image, Video, Music, MapPin, Users, Smile, Calendar, TrendingUp, Edit3, Sparkles } from 'lucide-react';
+import axios from 'axios';
 
-const CreatorContainer = styled(motion.div)`
-  background: ${props => props.theme.colors.surface};
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 20px;
-  box-shadow: ${props => props.theme.shadows.small};
-`;
-
-const TextArea = styled.textarea`
-  width: 100%;
-  min-height: 120px;
-  border: none;
-  outline: none;
-  resize: none;
-  font-size: 16px;
-  font-family: inherit;
-  background: transparent;
-  
-  &::placeholder {
-    color: ${props => props.theme.colors.textSecondary};
-  }
-`;
-
-const MediaGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
-  margin: 16px 0;
-`;
-
-const MediaItem = styled.div`
-  position: relative;
-  border-radius: 8px;
-  overflow: hidden;
-  
-  img, video {
-    width: 100%;
-    height: 150px;
-    object-fit: cover;
-  }
-`;
-
-const RemoveButton = styled.button`
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.7);
-  border: none;
-  color: white;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-`;
-
-const PollContainer = styled.div`
-  background: ${props => props.theme.colors.background};
-  border-radius: 8px;
-  padding: 16px;
-  margin: 16px 0;
-`;
-
-const PollOption = styled.input`
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid ${props => props.theme.colors.border};
-  border-radius: 6px;
-  margin-bottom: 8px;
-  
-  &:focus {
-    outline: none;
-    border-color: ${props => props.theme.colors.primary};
-  }
-`;
-
-const ActionBar = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 16px;
-  border-top: 1px solid ${props => props.theme.colors.border};
-`;
-
-const ActionButtons = styled.div`
-  display: flex;
-  gap: 12px;
-`;
-
-const ActionButton = styled.button`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: none;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.2s;
-  
-  &:hover {
-    background: ${props => props.theme.colors.hover};
-  }
-  
-  svg {
-    width: 20px;
-    height: 20px;
-    color: ${props => props.theme.colors.primary};
-  }
-`;
-
-const PostOptions = styled.div`
-  display: flex;
-  gap: 12px;
-  align-items: center;
-`;
-
-const PrivacySelect = styled.select`
-  padding: 6px 12px;
-  border: 1px solid ${props => props.theme.colors.border};
-  border-radius: 6px;
-  background: ${props => props.theme.colors.surface};
-  cursor: pointer;
-`;
-
-const PostButton = styled.button`
-  padding: 8px 24px;
-  background: ${props => props.theme.colors.primary};
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  
-  &:hover {
-    background: #166fe5;
-  }
-  
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-`;
-
-const HashtagSuggestions = styled.div`
-  position: absolute;
-  background: ${props => props.theme.colors.surface};
-  border: 1px solid ${props => props.theme.colors.border};
-  border-radius: 8px;
-  box-shadow: ${props => props.theme.shadows.medium};
-  max-height: 200px;
-  overflow-y: auto;
-  z-index: 100;
-`;
-
-const HashtagItem = styled.div`
-  padding: 8px 12px;
-  cursor: pointer;
-  
-  &:hover {
-    background: ${props => props.theme.colors.hover};
-  }
-`;
-
-const AdvancedPostCreator = () => {
+const AdvancedPostCreator = ({ onClose, onPost }) => {
   const [content, setContent] = useState('');
   const [media, setMedia] = useState([]);
-  const [showPoll, setShowPoll] = useState(false);
-  const [pollOptions, setPollOptions] = useState(['', '']);
-  const [showEmoji, setShowEmoji] = useState(false);
-  const [privacy, setPrivacy] = useState('public');
-  const [location, setLocation] = useState('');
-  const [isPinned, setIsPinned] = useState(false);
-  const [hashtags, setHashtags] = useState([]);
-  const [showHashtagSuggestions, setShowHashtagSuggestions] = useState(false);
-  const fileInputRef = useRef(null);
+  const [showOptions, setShowOptions] = useState(false);
+  const [location, setLocation] = useState(null);
+  const [taggedUsers, setTaggedUsers] = useState([]);
+  const [music, setMusic] = useState(null);
+  const [poll, setPoll] = useState(null);
+  const [visibility, setVisibility] = useState('public');
+  const [schedule, setSchedule] = useState(null);
+  const [filters, setFilters] = useState([]);
 
-  const reactions = [
-    { name: 'like', emoji: '👍' },
-    { name: 'love', emoji: '❤️' },
-    { name: 'wow', emoji: '😮' },
-    { name: 'haha', emoji: '😂' },
-    { name: 'sad', emoji: '😢' },
-    { name: 'angry', emoji: '😠' }
-  ];
-
-  const hashtagSuggestions = ['#technology', '#travel', '#food', '#fitness', '#photography'];
-
-  const handleMediaUpload = (files) => {
-    const newMedia = Array.from(files).map(file => ({
-      file,
-      preview: URL.createObjectURL(file),
-      type: file.type.startsWith('video') ? 'video' : 'image'
-    }));
-    setMedia(prev => [...prev, ...newMedia]);
-  };
-
-  const removeMedia = (index) => {
-    setMedia(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const addPollOption = () => {
-    setPollOptions(prev => [...prev, '']);
-  };
-
-  const updatePollOption = (index, value) => {
-    setPollOptions(prev => prev.map((opt, i) => i === index ? value : opt));
-  };
-
-  const onEmojiClick = (emojiObject) => {
-    setContent(prev => prev + emojiObject.emoji);
-    setShowEmoji(false);
-  };
-
-  const handleHashtagClick = (hashtag) => {
-    setContent(prev => prev + hashtag + ' ');
-    setShowHashtagSuggestions(false);
+  const handleMediaUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    const uploaded = await Promise.all(
+      files.map(async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await axios.post('/api/content-creation/media/edit', formData);
+        return res.data;
+      })
+    );
+    setMedia([...media, ...uploaded]);
   };
 
   const handlePost = async () => {
     const postData = {
       content,
       media,
-      poll: showPoll ? { options: pollOptions.filter(opt => opt.trim()) } : null,
-      privacy,
       location,
-      isPinned,
-      hashtags,
-      reactions: reactions.map(r => ({ ...r, count: 0 }))
+      taggedUsers,
+      music,
+      poll,
+      visibility,
+      scheduledFor: schedule
     };
-    
-    console.log('Creating advanced post:', postData);
-    
-    // Reset form
-    setContent('');
-    setMedia([]);
-    setShowPoll(false);
-    setPollOptions(['', '']);
-    setLocation('');
-    setIsPinned(false);
-    setHashtags([]);
+    await axios.post('/api/content-creation/posts/media', postData);
+    onPost && onPost();
+    onClose && onClose();
   };
 
   return (
-    <CreatorContainer
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-    >
-      <TextArea
-        placeholder="What's on your mind? Use # for hashtags, @ to mention friends..."
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-      />
+    <Container>
+      <Header>
+        <Title>Create Post</Title>
+        <CloseBtn onClick={onClose}>×</CloseBtn>
+      </Header>
 
-      {media.length > 0 && (
-        <MediaGrid>
-          {media.map((item, index) => (
-            <MediaItem key={index}>
-              {item.type === 'video' ? (
-                <video src={item.preview} />
-              ) : (
-                <img src={item.preview} alt="Preview" />
-              )}
-              <RemoveButton onClick={() => removeMedia(index)}>
-                <X size={12} />
-              </RemoveButton>
-            </MediaItem>
-          ))}
-        </MediaGrid>
-      )}
+      <ContentArea>
+        <TextArea 
+          placeholder="What's on your mind?"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+        />
 
-      <AnimatePresence>
-        {showPoll && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-          >
-            <PollContainer>
-              <h4>Create Poll</h4>
-              {pollOptions.map((option, index) => (
-                <PollOption
-                  key={index}
-                  placeholder={`Option ${index + 1}`}
-                  value={option}
-                  onChange={(e) => updatePollOption(index, e.target.value)}
-                />
-              ))}
-              <button onClick={addPollOption}>+ Add Option</button>
-            </PollContainer>
-          </motion.div>
+        {media.length > 0 && (
+          <MediaPreview>
+            {media.map((m, i) => (
+              <MediaItem key={i}>
+                {m.type === 'image' && <img src={m.url} alt="" />}
+                {m.type === 'video' && <video src={m.url} controls />}
+                <RemoveBtn onClick={() => setMedia(media.filter((_, idx) => idx !== i))}>×</RemoveBtn>
+              </MediaItem>
+            ))}
+          </MediaPreview>
         )}
-      </AnimatePresence>
 
-      <ActionBar>
-        <ActionButtons>
-          <ActionButton onClick={() => fileInputRef.current?.click()}>
-            <PhotoIcon />
-            Photo/Video
-          </ActionButton>
-          
-          <ActionButton onClick={() => setShowPoll(!showPoll)}>
-            <ChartBarIcon />
-            Poll
-          </ActionButton>
-          
-          <ActionButton onClick={() => setShowEmoji(!showEmoji)}>
-            <FaceSmileIcon />
-            Emoji
-          </ActionButton>
-          
-          <ActionButton onClick={() => setShowHashtagSuggestions(!showHashtagSuggestions)}>
-            <HashtagIcon />
-            Hashtag
-          </ActionButton>
-          
-          <ActionButton>
-            <MapPinIcon />
-            Location
-          </ActionButton>
-          
-          <ActionButton>
-            <GifIcon />
-            GIF
-          </ActionButton>
-        </ActionButtons>
+        {poll && (
+          <PollPreview>
+            <PollQuestion>{poll.question}</PollQuestion>
+            {poll.options.map((opt, i) => (
+              <PollOption key={i}>{opt}</PollOption>
+            ))}
+          </PollPreview>
+        )}
 
-        <PostOptions>
-          <ActionButton onClick={() => setIsPinned(!isPinned)}>
-            <Pin size={16} color={isPinned ? '#1877f2' : '#666'} />
-          </ActionButton>
-          
-          <PrivacySelect value={privacy} onChange={(e) => setPrivacy(e.target.value)}>
-            <option value="public">🌍 Public</option>
-            <option value="friends">👥 Friends</option>
-            <option value="private">🔒 Only Me</option>
-            <option value="custom">⚙️ Custom</option>
-          </PrivacySelect>
-          
-          <PostButton onClick={handlePost}>
-            <Send size={16} />
-            Post
-          </PostButton>
-        </PostOptions>
-      </ActionBar>
+        {location && (
+          <LocationTag>
+            <MapPin size={16} />
+            {location.name}
+          </LocationTag>
+        )}
 
-      {showEmoji && (
-        <div style={{ position: 'absolute', zIndex: 1000 }}>
-          <EmojiPicker onEmojiClick={onEmojiClick} />
-        </div>
+        {music && (
+          <MusicTag>
+            <Music size={16} />
+            {music.title} - {music.artist}
+          </MusicTag>
+        )}
+      </ContentArea>
+
+      <Toolbar>
+        <ToolButton onClick={() => document.getElementById('media-upload').click()}>
+          <Image size={20} />
+          <input 
+            id="media-upload" 
+            type="file" 
+            multiple 
+            accept="image/*,video/*" 
+            style={{ display: 'none' }}
+            onChange={handleMediaUpload}
+          />
+        </ToolButton>
+
+        <ToolButton onClick={() => setShowOptions('video')}>
+          <Video size={20} />
+        </ToolButton>
+
+        <ToolButton onClick={() => setShowOptions('music')}>
+          <Music size={20} />
+        </ToolButton>
+
+        <ToolButton onClick={() => setShowOptions('location')}>
+          <MapPin size={20} />
+        </ToolButton>
+
+        <ToolButton onClick={() => setShowOptions('tag')}>
+          <Users size={20} />
+        </ToolButton>
+
+        <ToolButton onClick={() => setShowOptions('poll')}>
+          <TrendingUp size={20} />
+        </ToolButton>
+
+        <ToolButton onClick={() => setShowOptions('schedule')}>
+          <Calendar size={20} />
+        </ToolButton>
+
+        <ToolButton onClick={() => setShowOptions('filters')}>
+          <Sparkles size={20} />
+        </ToolButton>
+      </Toolbar>
+
+      {showOptions === 'poll' && (
+        <OptionsPanel>
+          <h4>Create Poll</h4>
+          <Input placeholder="Ask a question..." onChange={(e) => setPoll({ ...poll, question: e.target.value })} />
+          <Input placeholder="Option 1" />
+          <Input placeholder="Option 2" />
+          <AddOptionBtn>+ Add Option</AddOptionBtn>
+        </OptionsPanel>
       )}
 
-      {showHashtagSuggestions && (
-        <HashtagSuggestions>
-          {hashtagSuggestions.map(hashtag => (
-            <HashtagItem key={hashtag} onClick={() => handleHashtagClick(hashtag)}>
-              {hashtag}
-            </HashtagItem>
-          ))}
-        </HashtagSuggestions>
+      {showOptions === 'music' && (
+        <OptionsPanel>
+          <h4>Add Music</h4>
+          <MusicList>
+            <MusicItem onClick={() => setMusic({ title: 'Summer Vibes', artist: 'DJ Cool' })}>
+              <Music size={16} />
+              Summer Vibes - DJ Cool
+            </MusicItem>
+            <MusicItem onClick={() => setMusic({ title: 'Chill Beats', artist: 'Lo-Fi' })}>
+              <Music size={16} />
+              Chill Beats - Lo-Fi
+            </MusicItem>
+          </MusicList>
+        </OptionsPanel>
       )}
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="image/*,video/*"
-        style={{ display: 'none' }}
-        onChange={(e) => handleMediaUpload(e.target.files)}
-      />
-    </CreatorContainer>
+      {showOptions === 'filters' && (
+        <OptionsPanel>
+          <h4>Apply Filters</h4>
+          <FilterGrid>
+            {['Vintage', 'B&W', 'Warm', 'Cool', 'Bright', 'Dark'].map(f => (
+              <FilterBtn key={f} onClick={() => setFilters([...filters, f])}>
+                {f}
+              </FilterBtn>
+            ))}
+          </FilterGrid>
+        </OptionsPanel>
+      )}
+
+      <Footer>
+        <VisibilitySelect value={visibility} onChange={(e) => setVisibility(e.target.value)}>
+          <option value="public">Public</option>
+          <option value="friends">Friends</option>
+          <option value="private">Private</option>
+        </VisibilitySelect>
+
+        <PostButton onClick={handlePost}>
+          {schedule ? 'Schedule' : 'Post'}
+        </PostButton>
+      </Footer>
+    </Container>
   );
 };
+
+const Container = styled.div`
+  background: white;
+  border-radius: 12px;
+  width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+`;
+
+const Header = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #ddd;
+`;
+
+const Title = styled.h2`
+  margin: 0;
+`;
+
+const CloseBtn = styled.button`
+  background: none;
+  border: none;
+  font-size: 30px;
+  cursor: pointer;
+`;
+
+const ContentArea = styled.div`
+  padding: 20px;
+`;
+
+const TextArea = styled.textarea`
+  width: 100%;
+  min-height: 120px;
+  border: none;
+  font-size: 16px;
+  resize: none;
+  &:focus { outline: none; }
+`;
+
+const MediaPreview = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 15px;
+`;
+
+const MediaItem = styled.div`
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  img, video { width: 100%; height: 100%; object-fit: cover; }
+`;
+
+const RemoveBtn = styled.button`
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: rgba(0,0,0,0.7);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+`;
+
+const PollPreview = styled.div`
+  background: #f0f2f5;
+  padding: 15px;
+  border-radius: 8px;
+  margin-top: 15px;
+`;
+
+const PollQuestion = styled.div`
+  font-weight: 600;
+  margin-bottom: 10px;
+`;
+
+const PollOption = styled.div`
+  background: white;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+`;
+
+const LocationTag = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #e7f3ff;
+  padding: 8px 12px;
+  border-radius: 20px;
+  margin-top: 10px;
+  width: fit-content;
+  color: #1877f2;
+`;
+
+const MusicTag = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff3e0;
+  padding: 8px 12px;
+  border-radius: 20px;
+  margin-top: 10px;
+  width: fit-content;
+  color: #ff9800;
+`;
+
+const Toolbar = styled.div`
+  display: flex;
+  gap: 10px;
+  padding: 15px 20px;
+  border-top: 1px solid #ddd;
+  border-bottom: 1px solid #ddd;
+`;
+
+const ToolButton = styled.button`
+  background: #f0f2f5;
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  &:hover { background: #e4e6eb; }
+`;
+
+const OptionsPanel = styled.div`
+  padding: 20px;
+  background: #f8f9fa;
+  h4 { margin-top: 0; }
+`;
+
+const Input = styled.input`
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  margin-bottom: 10px;
+`;
+
+const AddOptionBtn = styled.button`
+  background: none;
+  border: none;
+  color: #1877f2;
+  cursor: pointer;
+  font-weight: 600;
+`;
+
+const MusicList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+`;
+
+const MusicItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  &:hover { background: #f0f2f5; }
+`;
+
+const FilterGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+`;
+
+const FilterBtn = styled.button`
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  &:hover { background: #f0f2f5; }
+`;
+
+const Footer = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+`;
+
+const VisibilitySelect = styled.select`
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+`;
+
+const PostButton = styled.button`
+  background: #1877f2;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 30px;
+  font-weight: 600;
+  cursor: pointer;
+  &:hover { background: #166fe5; }
+`;
 
 export default AdvancedPostCreator;

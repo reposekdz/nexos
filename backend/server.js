@@ -90,6 +90,14 @@ app.use('/api/profile-advanced', require('./routes/profile-advanced'));
 app.use('/api/comments-advanced', require('./routes/comments-advanced'));
 app.use('/api/feed-advanced', require('./routes/feed-advanced'));
 app.use('/api/gamification', require('./routes/gamification'));
+app.use('/api/content-creation', require('./routes/content-creation'));
+app.use('/api/marketplace-advanced', require('./routes/marketplace-advanced'));
+app.use('/api/entertainment', require('./routes/entertainment'));
+app.use('/api/profile-complete', require('./routes/profile-complete'));
+app.use('/api/integrations', require('./routes/integrations'));
+
+// Make io globally available
+global.io = io;
 
 // Socket.io for real-time features
 io.on('connection', (socket) => {
