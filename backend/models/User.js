@@ -100,7 +100,63 @@ const userSchema = new mongoose.Schema({
   }
 },
   savedPosts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Post' }],
-  blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+  blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  coverPhoto: String,
+  socialLinks: {
+    twitter: String,
+    instagram: String,
+    linkedin: String,
+    website: String
+  },
+  privacy: {
+    profileVisibility: { type: String, enum: ['public', 'friends', 'private'], default: 'public' },
+    postVisibility: { type: String, enum: ['public', 'friends', 'private'], default: 'public' },
+    friendListVisibility: { type: String, enum: ['public', 'friends', 'private'], default: 'friends' }
+  },
+  friends: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  friendRequests: {
+    sent: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    received: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+  },
+  multipleProfiles: [{
+    name: String,
+    type: { type: String, enum: ['personal', 'professional', 'business'] },
+    avatar: String
+  }],
+  settings: {
+    language: { type: String, default: 'en' },
+    timezone: String,
+    region: String,
+    theme: { type: String, enum: ['light', 'dark', 'auto'], default: 'light' },
+    notifications: {
+      email: { type: Boolean, default: true },
+      push: { type: Boolean, default: true },
+      sms: { type: Boolean, default: false }
+    }
+  },
+  mutedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  restrictedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  profileViewers: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    viewedAt: Date
+  }],
+  achievements: [{
+    type: String,
+    title: String,
+    description: String,
+    unlockedAt: Date
+  }],
+  completedChallenges: [{
+    challengeId: String,
+    completedAt: Date
+  }],
+  loginStreak: { type: Number, default: 0 },
+  longestStreak: { type: Number, default: 0 },
+  lastLoginDate: String,
+  claimedRewards: [{
+    rewardId: String,
+    claimedAt: Date
+  }]
 }, { timestamps: true });
 
 userSchema.index({ locationCoordinates: '2dsphere' });

@@ -86,6 +86,10 @@ app.use('/api/premium', require('./routes/premium'));
 app.use('/api/follow', require('./routes/follow'));
 app.use('/api/interactions', require('./routes/interactions'));
 app.use('/api/marketplace-location', require('./routes/marketplace-location'));
+app.use('/api/profile-advanced', require('./routes/profile-advanced'));
+app.use('/api/comments-advanced', require('./routes/comments-advanced'));
+app.use('/api/feed-advanced', require('./routes/feed-advanced'));
+app.use('/api/gamification', require('./routes/gamification'));
 
 // Socket.io for real-time features
 io.on('connection', (socket) => {

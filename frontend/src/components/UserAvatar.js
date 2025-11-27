@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
+import { CheckCircle } from 'lucide-react';
 
 const UserAvatar = ({ user, size = 40, showName = false, onClick }) => {
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ const UserAvatar = ({ user, size = 40, showName = false, onClick }) => {
         <Info>
           <Name>
             {user.username}
-            {user.isVerified && <Verified>✓</Verified>}
+            {user.isVerified && <Verified><CheckCircle size={14} /></Verified>}
           </Name>
           {user.fullName && <FullName>{user.fullName}</FullName>}
         </Info>
