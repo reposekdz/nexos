@@ -24,6 +24,10 @@ const userSchema = new mongoose.Schema({
     ip: String,
     userAgent: String,
     location: String,
+  locationCoordinates: {
+    type: { type: String, enum: ['Point'], default: 'Point' },
+    coordinates: [Number]
+  },
     timestamp: { type: Date, default: Date.now }
   }],
   activeSessions: [{
@@ -94,7 +98,12 @@ const userSchema = new mongoose.Schema({
       price: Number
     }]
   }
+},
+  savedPosts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Post' }],
+  blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
 }, { timestamps: true });
+
+userSchema.index({ locationCoordinates: '2dsphere' });
 
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();

@@ -83,6 +83,9 @@ app.use('/api/virtual-currency', require('./routes/virtual-currency'));
 app.use('/api/business', require('./routes/business'));
 app.use('/api/admin/ads', require('./routes/admin-ads'));
 app.use('/api/premium', require('./routes/premium'));
+app.use('/api/follow', require('./routes/follow'));
+app.use('/api/interactions', require('./routes/interactions'));
+app.use('/api/marketplace-location', require('./routes/marketplace-location'));
 
 // Socket.io for real-time features
 io.on('connection', (socket) => {
