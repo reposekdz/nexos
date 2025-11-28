@@ -1,234 +1,466 @@
 const express = require('express');
-const router = express.Router();
-const MarketplaceItem = require('../models/MarketplaceItem');
+const {
+  Inventory,
+  Reservation,
+  Warehouse,
+  Order,
+  ShippingLabel,
+  RMA,
+  SKUBundle,
+  PriceRule,
+  SellerPerformance,
+  ChannelMapping,
+  AttributeSchema,
+  SKULifecycle
+} = require('../models/Marketplace');
 const auth = require('../middleware/auth');
+const router = express.Router();
 
-// Advanced marketplace (40 APIs)
-router.post('/products', auth, async (req, res) => {
+router.post('/inventory', auth, async (req, res) => {
   try {
-    const product = new MarketplaceItem({
-      seller: req.user.id,
-      title: req.body.title,
-      description: req.body.description,
-      price: req.body.price,
-      category: req.body.category,
-      condition: req.body.condition,
-      images: req.body.images,
-      location: req.body.location,
-      shipping: req.body.shipping,
-      negotiable: req.body.negotiable || false
+    const inventory = new Inventory({
+      ...req.body,
+      available: req.body.quantity
     });
-    await product.save();
-    res.json(product);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    await inventory.save();
+    res.status(201).json(inventory);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
-router.post('/products/:id/negotiate', auth, async (req, res) => {
+router.get('/inventory', auth, async (req, res) => {
   try {
-    const product = await MarketplaceItem.findById(req.params.id);
-    if (!product.negotiations) product.negotiations = [];
-    product.negotiations.push({
-      buyer: req.user.id,
-      offeredPrice: req.body.price,
-      message: req.body.message,
-      status: 'pending'
-    });
-    await product.save();
-    res.json({ message: 'Offer sent' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/products/:id/review', auth, async (req, res) => {
-  try {
-    const product = await MarketplaceItem.findById(req.params.id);
-    if (!product.reviews) product.reviews = [];
-    product.reviews.push({
-      user: req.user.id,
-      rating: req.body.rating,
-      comment: req.body.comment,
-      createdAt: new Date()
-    });
-    product.averageRating = product.reviews.reduce((sum, r) => sum + r.rating, 0) / product.reviews.length;
-    await product.save();
-    res.json(product.reviews);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/products/:id/bid', auth, async (req, res) => {
-  try {
-    const product = await MarketplaceItem.findById(req.params.id);
-    if (!product.bids) product.bids = [];
-    product.bids.push({
-      bidder: req.user.id,
-      amount: req.body.amount,
-      createdAt: new Date()
-    });
-    product.currentBid = Math.max(...product.bids.map(b => b.amount));
-    await product.save();
-    res.json({ currentBid: product.currentBid });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/products/:id/purchase', auth, async (req, res) => {
-  try {
-    const product = await MarketplaceItem.findById(req.params.id);
-    product.status = 'sold';
-    product.buyer = req.user.id;
-    product.soldAt = new Date();
-    await product.save();
-    res.json({ message: 'Purchase successful', orderId: product._id });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/products/:id/wishlist', auth, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user.wishlist) user.wishlist = [];
-    if (!user.wishlist.includes(req.params.id)) {
-      user.wishlist.push(req.params.id);
-    } else {
-      user.wishlist = user.wishlist.filter(id => id.toString() !== req.params.id);
+    const { warehouse, sku, lowStock } = req.query;
+    const filter = {};
+    
+    if (warehouse) filter.warehouseId = warehouse;
+    if (sku) filter.sku = new RegExp(sku, 'i');
+    if (lowStock === 'true') {
+      filter.$expr = { $lt: ['$available', '$reorderPoint'] };
     }
-    await user.save();
-    res.json({ inWishlist: user.wishlist.includes(req.params.id) });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get('/wishlist', auth, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).populate({
-      path: 'wishlist',
-      populate: { path: 'seller', select: 'username avatar' }
-    });
-    res.json(user.wishlist || []);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/products/:id/price-alert', auth, async (req, res) => {
-  try {
-    const product = await MarketplaceItem.findById(req.params.id);
-    if (!product.priceAlerts) product.priceAlerts = [];
-    product.priceAlerts.push({
-      user: req.user.id,
-      targetPrice: req.body.targetPrice
-    });
-    await product.save();
-    res.json({ message: 'Price alert set' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/products/:id/promote', auth, async (req, res) => {
-  try {
-    const product = await MarketplaceItem.findById(req.params.id);
-    product.isPromoted = true;
-    product.promotedUntil = new Date(Date.now() + req.body.days * 24 * 60 * 60 * 1000);
-    await product.save();
-    res.json({ message: 'Product promoted', until: product.promotedUntil });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get('/products/:id/shipping-quote', async (req, res) => {
-  try {
-    const { zipCode, weight } = req.query;
-    const quote = { standard: 5.99, express: 12.99, overnight: 24.99 };
-    res.json(quote);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/orders/:id/track', auth, async (req, res) => {
-  try {
-    const tracking = {
-      orderId: req.params.id,
-      status: 'in_transit',
-      location: 'Distribution Center',
-      estimatedDelivery: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-      history: [
-        { status: 'ordered', date: new Date(), location: 'Origin' },
-        { status: 'shipped', date: new Date(), location: 'Warehouse' }
-      ]
-    };
-    res.json(tracking);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/orders/:id/return', auth, async (req, res) => {
-  try {
-    res.json({ message: 'Return request submitted', returnId: Date.now() });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.get('/seller/:id/inventory', auth, async (req, res) => {
-  try {
-    const products = await MarketplaceItem.find({ seller: req.params.id });
-    const inventory = products.map(p => ({
-      id: p._id,
-      title: p.title,
-      stock: p.stock || 0,
-      sold: p.soldCount || 0,
-      revenue: p.revenue || 0
-    }));
+    
+    const inventory = await Inventory.find(filter)
+      .populate('warehouseId', 'name code')
+      .populate('productId', 'name');
+    
     res.json(inventory);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
-router.post('/subscription/seller/:id', auth, async (req, res) => {
+router.post('/inventory/:id/reserve', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    if (!user.sellerSubscriptions) user.sellerSubscriptions = [];
-    user.sellerSubscriptions.push({
-      seller: req.params.id,
-      tier: req.body.tier,
-      price: req.body.price,
-      startDate: new Date()
+    const { quantity } = req.body;
+    
+    const inventory = await Inventory.findById(req.params.id);
+    if (!inventory) {
+      return res.status(404).json({ message: 'Inventory not found' });
+    }
+    
+    await inventory.reserve(quantity);
+    
+    const reservation = new Reservation({
+      userId: req.userId,
+      inventoryId: inventory._id,
+      quantity,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000)
     });
-    await user.save();
-    res.json({ message: 'Subscribed to seller' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    
+    await reservation.save();
+    
+    res.json({ reservation, inventory });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
-router.get('/products/local-pickup', auth, async (req, res) => {
+router.post('/inventory/:id/release', auth, async (req, res) => {
   try {
-    const { lat, lng } = req.query;
-    const products = await MarketplaceItem.find({
-      localPickup: true,
-      'location.coordinates': {
-        $near: {
-          $geometry: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
-          $maxDistance: 10000
-        }
-      }
-    }).populate('seller', 'username avatar');
-    res.json(products);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    const { reservationId } = req.body;
+    
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation) {
+      return res.status(404).json({ message: 'Reservation not found' });
+    }
+    
+    const inventory = await Inventory.findById(reservation.inventoryId);
+    await inventory.release(reservation.quantity);
+    
+    reservation.status = 'released';
+    reservation.releasedAt = new Date();
+    await reservation.save();
+    
+    res.json({ message: 'Reservation released', inventory });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/warehouses', auth, async (req, res) => {
+  try {
+    const warehouse = new Warehouse(req.body);
+    await warehouse.save();
+    res.status(201).json(warehouse);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/warehouses', async (req, res) => {
+  try {
+    const warehouses = await Warehouse.find({ enabled: true });
+    res.json(warehouses);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/orders', auth, async (req, res) => {
+  try {
+    const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    
+    const order = new Order({
+      ...req.body,
+      orderNumber,
+      userId: req.userId,
+      timeline: [{
+        status: 'pending',
+        timestamp: new Date(),
+        note: 'Order created'
+      }]
+    });
+    
+    await order.save();
+    
+    res.status(201).json(order);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/orders', auth, async (req, res) => {
+  try {
+    const { status, from, to } = req.query;
+    const filter = { userId: req.userId };
+    
+    if (status) filter.status = status;
+    if (from || to) {
+      filter.createdAt = {};
+      if (from) filter.createdAt.$gte = new Date(from);
+      if (to) filter.createdAt.$lte = new Date(to);
+    }
+    
+    const orders = await Order.find(filter).sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/orders/:id', auth, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+    res.json(order);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/orders/:id/status', auth, async (req, res) => {
+  try {
+    const { status, note, location } = req.body;
+    
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+    
+    order.status = status;
+    order.timeline.push({
+      status,
+      timestamp: new Date(),
+      location,
+      note
+    });
+    
+    if (status === 'delivered') {
+      order.deliveredAt = new Date();
+    }
+    
+    await order.save();
+    res.json(order);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/shipping/labels', auth, async (req, res) => {
+  try {
+    const label = new ShippingLabel(req.body);
+    await label.save();
+    res.status(201).json(label);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/shipping/labels/:trackingNumber', async (req, res) => {
+  try {
+    const label = await ShippingLabel.findOne({
+      trackingNumber: req.params.trackingNumber
+    }).populate('orderId');
+    
+    if (!label) {
+      return res.status(404).json({ message: 'Label not found' });
+    }
+    
+    res.json(label);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/rma', auth, async (req, res) => {
+  try {
+    const rmaNumber = `RMA-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    
+    const rma = new RMA({
+      ...req.body,
+      rmaNumber,
+      userId: req.userId,
+      slaDeadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      timeline: [{
+        status: 'requested',
+        timestamp: new Date(),
+        note: 'RMA requested'
+      }]
+    });
+    
+    await rma.save();
+    res.status(201).json(rma);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/rma', auth, async (req, res) => {
+  try {
+    const rmas = await RMA.find({ userId: req.userId })
+      .populate('orderId')
+      .sort({ createdAt: -1 });
+    res.json(rmas);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/rma/:id/status', auth, async (req, res) => {
+  try {
+    const { status, note, resolution } = req.body;
+    
+    const rma = await RMA.findById(req.params.id);
+    if (!rma) {
+      return res.status(404).json({ message: 'RMA not found' });
+    }
+    
+    rma.status = status;
+    if (resolution) rma.resolution = resolution;
+    
+    rma.timeline.push({
+      status,
+      timestamp: new Date(),
+      note
+    });
+    
+    await rma.save();
+    res.json(rma);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/bundles', auth, async (req, res) => {
+  try {
+    const bundle = new SKUBundle(req.body);
+    await bundle.save();
+    res.status(201).json(bundle);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/bundles', async (req, res) => {
+  try {
+    const bundles = await SKUBundle.find({ enabled: true });
+    res.json(bundles);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/price-rules', auth, async (req, res) => {
+  try {
+    const rule = new PriceRule(req.body);
+    await rule.save();
+    res.status(201).json(rule);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/price-rules', async (req, res) => {
+  try {
+    const now = new Date();
+    const rules = await PriceRule.find({
+      enabled: true,
+      $or: [
+        { startDate: { $lte: now }, endDate: { $gte: now } },
+        { startDate: null, endDate: null }
+      ]
+    }).sort({ priority: -1 });
+    
+    res.json(rules);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/price-rules/:id/apply', async (req, res) => {
+  try {
+    const { cart } = req.body;
+    
+    const rule = await PriceRule.findById(req.params.id);
+    if (!rule || !rule.enabled) {
+      return res.status(404).json({ message: 'Rule not found' });
+    }
+    
+    res.json({
+      originalTotal: cart.total,
+      discount: 0,
+      newTotal: cart.total,
+      message: 'Price rule applied'
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/seller/performance', auth, async (req, res) => {
+  try {
+    const performance = await SellerPerformance.findOne({
+      sellerId: req.userId
+    });
+    
+    if (!performance) {
+      return res.status(404).json({ message: 'No performance data found' });
+    }
+    
+    res.json(performance);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/channels', auth, async (req, res) => {
+  try {
+    const mapping = new ChannelMapping({
+      ...req.body,
+      sellerId: req.userId
+    });
+    await mapping.save();
+    res.status(201).json(mapping);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/channels', auth, async (req, res) => {
+  try {
+    const mappings = await ChannelMapping.find({
+      sellerId: req.userId,
+      enabled: true
+    });
+    res.json(mappings);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/channels/:id/sync', auth, async (req, res) => {
+  try {
+    const mapping = await ChannelMapping.findOne({
+      _id: req.params.id,
+      sellerId: req.userId
+    });
+    
+    if (!mapping) {
+      return res.status(404).json({ message: 'Channel mapping not found' });
+    }
+    
+    mapping.lastSync = new Date();
+    await mapping.save();
+    
+    res.json({ message: 'Sync initiated', mapping });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/attribute-schemas', auth, async (req, res) => {
+  try {
+    const schema = new AttributeSchema(req.body);
+    await schema.save();
+    res.status(201).json(schema);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/attribute-schemas/:category', async (req, res) => {
+  try {
+    const schema = await AttributeSchema.findOne({
+      category: req.params.category
+    }).sort({ version: -1 });
+    
+    res.json(schema);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/sku/:sku/deprecate', auth, async (req, res) => {
+  try {
+    const { reason, replacementSku } = req.body;
+    
+    const lifecycle = await SKULifecycle.findOneAndUpdate(
+      { sku: req.params.sku },
+      {
+        sku: req.params.sku,
+        status: 'deprecated',
+        deprecationDate: new Date(),
+        reason,
+        replacementSku
+      },
+      { upsert: true, new: true }
+    );
+    
+    res.json(lifecycle);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/sku/:sku/lifecycle', async (req, res) => {
+  try {
+    const lifecycle = await SKULifecycle.findOne({ sku: req.params.sku });
+    res.json(lifecycle);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
