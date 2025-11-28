@@ -1,324 +1,538 @@
 const express = require('express');
-const User = require('../models/User');
-const Post = require('../models/Post');
-const Ad = require('../models/Ad');
+const {
+  SystemMetric,
+  UserEngagement,
+  ErrorLog,
+  AlertRule,
+  AlertHistory,
+  Dashboard,
+  ReportSchedule,
+  ReportExecution,
+  PerformanceMetric,
+  ResourceUsage,
+  AnomalyDetection,
+  UsageHeatmap,
+  ServiceHealth
+} = require('../models/Analytics');
 const auth = require('../middleware/auth');
 const router = express.Router();
 
-// User analytics dashboard
-router.get('/user', auth, async (req, res) => {
+router.post('/metrics', auth, async (req, res) => {
   try {
-    const { timeframe = '30d' } = req.query;
-    const user = await User.findById(req.userId);
-    
-    let dateFilter = new Date();
-    switch (timeframe) {
-      case '7d':
-        dateFilter.setDate(dateFilter.getDate() - 7);
-        break;
-      case '30d':
-        dateFilter.setDate(dateFilter.getDate() - 30);
-        break;
-      case '90d':
-        dateFilter.setDate(dateFilter.getDate() - 90);
-        break;
-      default:
-        dateFilter.setDate(dateFilter.getDate() - 30);
-    }
-    
-    // Get user's posts analytics
-    const posts = await Post.find({
-      author: req.userId,
-      createdAt: { $gte: dateFilter }
-    });
-    
-    // Calculate metrics
-    const totalPosts = posts.length;
-    const totalLikes = posts.reduce((sum, post) => sum + post.likes.length, 0);
-    const totalComments = posts.reduce((sum, post) => sum + post.comments.length, 0);
-    const totalShares = posts.reduce((sum, post) => sum + post.shares.length, 0);
-    const totalEngagement = totalLikes + totalComments + totalShares;
-    
-    // Engagement rate
-    const engagementRate = totalPosts > 0 ? (totalEngagement / totalPosts).toFixed(2) : 0;
-    
-    // Top performing posts
-    const topPosts = posts
-      .map(post => ({
-        id: post._id,
-        content: post.content.substring(0, 100),
-        likes: post.likes.length,
-        comments: post.comments.length,
-        shares: post.shares.length,
-        engagement: post.likes.length + post.comments.length + post.shares.length,
-        createdAt: post.createdAt
-      }))
-      .sort((a, b) => b.engagement - a.engagement)
-      .slice(0, 5);
-    
-    // Follower growth
-    const followerGrowth = await calculateFollowerGrowth(req.userId, dateFilter);
-    
-    // Engagement by day
-    const engagementByDay = await calculateEngagementByDay(posts);
-    
-    res.json({
-      overview: {
-        totalPosts,
-        totalLikes,
-        totalComments,
-        totalShares,
-        totalEngagement,
-        engagementRate,
-        followers: user.followers.length,
-        following: user.following.length
-      },
-      topPosts,
-      followerGrowth,
-      engagementByDay,
-      demographics: await getUserDemographics(req.userId)
-    });
+    const metric = new SystemMetric(req.body);
+    await metric.save();
+    res.status(201).json(metric);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// Post analytics
-router.get('/post/:id', auth, async (req, res) => {
+router.get('/metrics', auth, async (req, res) => {
   try {
-    const post = await Post.findOne({
-      _id: req.params.id,
-      author: req.userId
-    }).populate('likes', 'username fullName avatar')
-      .populate('comments.user', 'username fullName avatar');
+    const { metricType, service, from, to, aggregation } = req.query;
+    const filter = {};
     
-    if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
+    if (metricType) filter.metricType = metricType;
+    if (service) filter.service = service;
+    if (from || to) {
+      filter.timestamp = {};
+      if (from) filter.timestamp.$gte = new Date(from);
+      if (to) filter.timestamp.$lte = new Date(to);
     }
     
-    // Calculate reach (unique users who saw the post)
-    const reach = await calculatePostReach(post._id);
+    let query = SystemMetric.find(filter).sort({ timestamp: -1 });
     
-    // Engagement breakdown
-    const engagement = {
-      likes: post.likes.length,
-      comments: post.comments.length,
-      shares: post.shares.length,
-      total: post.likes.length + post.comments.length + post.shares.length
-    };
-    
-    // Engagement rate
-    const engagementRate = reach > 0 ? ((engagement.total / reach) * 100).toFixed(2) : 0;
-    
-    // Top comments
-    const topComments = post.comments
-      .sort((a, b) => b.likes.length - a.likes.length)
-      .slice(0, 5);
-    
-    res.json({
-      post: {
-        id: post._id,
-        content: post.content,
-        createdAt: post.createdAt,
-        media: post.media
-      },
-      metrics: {
-        reach,
-        engagement,
-        engagementRate,
-        impressions: reach * 1.5 // Estimated impressions
-      },
-      topComments,
-      likesByHour: await getLikesByHour(post._id),
-      demographics: await getPostDemographics(post._id)
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// Ad analytics (for advertisers)
-router.get('/ads', auth, async (req, res) => {
-  try {
-    const ads = await Ad.find({ advertiser: req.userId });
-    
-    const analytics = await Promise.all(ads.map(async (ad) => {
-      const ctr = ad.metrics.impressions > 0 ? 
-        ((ad.metrics.clicks / ad.metrics.impressions) * 100).toFixed(2) : 0;
-      
-      const cpc = ad.metrics.clicks > 0 ? 
-        (ad.budget.spent / ad.metrics.clicks).toFixed(2) : 0;
-      
-      const cpm = ad.metrics.impressions > 0 ? 
-        ((ad.budget.spent / ad.metrics.impressions) * 1000).toFixed(2) : 0;
-      
-      return {
-        id: ad._id,
-        title: ad.title,
-        status: ad.status,
-        budget: ad.budget,
-        metrics: {
-          ...ad.metrics,
-          ctr: parseFloat(ctr),
-          cpc: parseFloat(cpc),
-          cpm: parseFloat(cpm)
+    if (aggregation) {
+      const result = await SystemMetric.aggregate([
+        { $match: filter },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m-%d %H:00:00", date: "$timestamp" } },
+            avg: { $avg: '$value' },
+            min: { $min: '$value' },
+            max: { $max: '$value' },
+            count: { $sum: 1 }
+          }
         },
-        performance: calculateAdPerformance(ad)
-      };
-    }));
+        { $sort: { _id: -1 } }
+      ]);
+      
+      return res.json(result);
+    }
     
-    // Overall campaign metrics
-    const totalSpent = ads.reduce((sum, ad) => sum + ad.budget.spent, 0);
-    const totalImpressions = ads.reduce((sum, ad) => sum + ad.metrics.impressions, 0);
-    const totalClicks = ads.reduce((sum, ad) => sum + ad.metrics.clicks, 0);
-    const overallCTR = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : 0;
-    
-    res.json({
-      ads: analytics,
-      overview: {
-        totalAds: ads.length,
-        totalSpent,
-        totalImpressions,
-        totalClicks,
-        overallCTR: parseFloat(overallCTR),
-        activeAds: ads.filter(ad => ad.status === 'active').length
-      }
-    });
+    const metrics = await query.limit(1000);
+    res.json(metrics);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// Platform analytics (admin only)
-router.get('/platform', auth, async (req, res) => {
+router.post('/engagement', async (req, res) => {
   try {
-    // Check if user is admin
-    const user = await User.findById(req.userId);
-    if (user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied' });
+    const engagement = new UserEngagement(req.body);
+    await engagement.save();
+    res.status(201).json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/engagement', auth, async (req, res) => {
+  try {
+    const { userId, event, from, to } = req.query;
+    const filter = {};
+    
+    if (userId) filter.userId = userId;
+    if (event) filter.event = event;
+    if (from || to) {
+      filter.timestamp = {};
+      if (from) filter.timestamp.$gte = new Date(from);
+      if (to) filter.timestamp.$lte = new Date(to);
     }
     
-    const { timeframe = '30d' } = req.query;
-    let dateFilter = new Date();
-    dateFilter.setDate(dateFilter.getDate() - parseInt(timeframe.replace('d', '')));
+    const engagement = await UserEngagement.find(filter)
+      .sort({ timestamp: -1 })
+      .limit(1000);
     
-    // User metrics
-    const totalUsers = await User.countDocuments();
-    const newUsers = await User.countDocuments({ createdAt: { $gte: dateFilter } });
-    const activeUsers = await User.countDocuments({ lastSeen: { $gte: dateFilter } });
+    res.json(engagement);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/engagement/stats', auth, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const filter = {};
     
-    // Content metrics
-    const totalPosts = await Post.countDocuments();
-    const newPosts = await Post.countDocuments({ createdAt: { $gte: dateFilter } });
+    if (from || to) {
+      filter.timestamp = {};
+      if (from) filter.timestamp.$gte = new Date(from);
+      if (to) filter.timestamp.$lte = new Date(to);
+    }
     
-    // Engagement metrics
-    const totalEngagement = await Post.aggregate([
-      { $match: { createdAt: { $gte: dateFilter } } },
+    const stats = await UserEngagement.aggregate([
+      { $match: filter },
       {
         $group: {
-          _id: null,
-          totalLikes: { $sum: { $size: '$likes' } },
-          totalComments: { $sum: { $size: '$comments' } },
-          totalShares: { $sum: { $size: '$shares' } }
+          _id: '$event',
+          count: { $sum: 1 },
+          uniqueUsers: { $addToSet: '$userId' },
+          avgDuration: { $avg: '$duration' }
         }
-      }
+      },
+      {
+        $project: {
+          event: '$_id',
+          count: 1,
+          uniqueUsers: { $size: '$uniqueUsers' },
+          avgDuration: 1
+        }
+      },
+      { $sort: { count: -1 } }
     ]);
     
-    // Revenue metrics (from ads)
-    const adRevenue = await Ad.aggregate([
-      { $match: { createdAt: { $gte: dateFilter } } },
-      { $group: { _id: null, totalRevenue: { $sum: '$budget.spent' } } }
-    ]);
-    
-    // Growth trends
-    const userGrowth = await calculatePlatformGrowth('users', dateFilter);
-    const postGrowth = await calculatePlatformGrowth('posts', dateFilter);
-    
-    res.json({
-      users: {
-        total: totalUsers,
-        new: newUsers,
-        active: activeUsers,
-        growth: userGrowth
-      },
-      content: {
-        totalPosts,
-        newPosts,
-        growth: postGrowth
-      },
-      engagement: totalEngagement[0] || { totalLikes: 0, totalComments: 0, totalShares: 0 },
-      revenue: {
-        total: adRevenue[0]?.totalRevenue || 0,
-        trend: await calculateRevenueGrowth(dateFilter)
-      },
-      topContent: await getTopContent(dateFilter),
-      demographics: await getPlatformDemographics()
-    });
+    res.json(stats);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// Helper functions
-const calculateFollowerGrowth = async (userId, dateFilter) => {
-  // This would require storing follower history
-  // For now, return mock data
-  return Array.from({ length: 30 }, (_, i) => ({
-    date: new Date(Date.now() - (29 - i) * 24 * 60 * 60 * 1000),
-    followers: Math.floor(Math.random() * 100) + 1000
-  }));
-};
-
-const calculateEngagementByDay = async (posts) => {
-  const engagementByDay = {};
-  
-  posts.forEach(post => {
-    const day = post.createdAt.toISOString().split('T')[0];
-    if (!engagementByDay[day]) {
-      engagementByDay[day] = 0;
+router.post('/errors', async (req, res) => {
+  try {
+    const { message, stack, service, fingerprint } = req.body;
+    
+    let errorLog = null;
+    
+    if (fingerprint) {
+      errorLog = await ErrorLog.findOne({ fingerprint, resolved: false });
     }
-    engagementByDay[day] += post.likes.length + post.comments.length + post.shares.length;
-  });
-  
-  return Object.entries(engagementByDay).map(([date, engagement]) => ({
-    date,
-    engagement
-  }));
-};
+    
+    if (errorLog) {
+      errorLog.occurrences += 1;
+      errorLog.lastOccurrence = new Date();
+      await errorLog.save();
+    } else {
+      errorLog = new ErrorLog(req.body);
+      await errorLog.save();
+    }
+    
+    res.status(201).json(errorLog);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
-const calculatePostReach = async (postId) => {
-  // This would require tracking post views
-  // For now, return estimated reach
-  return Math.floor(Math.random() * 1000) + 500;
-};
+router.get('/errors', auth, async (req, res) => {
+  try {
+    const { level, service, resolved } = req.query;
+    const filter = {};
+    
+    if (level) filter.level = level;
+    if (service) filter.service = service;
+    if (resolved !== undefined) filter.resolved = resolved === 'true';
+    
+    const errors = await ErrorLog.find(filter)
+      .sort({ lastOccurrence: -1 })
+      .limit(100);
+    
+    res.json(errors);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
-const getUserDemographics = async (userId) => {
-  // This would analyze follower demographics
-  return {
-    ageGroups: {
-      '18-24': 25,
-      '25-34': 35,
-      '35-44': 20,
-      '45-54': 15,
-      '55+': 5
-    },
-    gender: {
-      male: 45,
-      female: 50,
-      other: 5
-    },
-    topLocations: ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix']
-  };
-};
+router.put('/errors/:id/resolve', auth, async (req, res) => {
+  try {
+    const errorLog = await ErrorLog.findByIdAndUpdate(
+      req.params.id,
+      {
+        resolved: true,
+        resolvedAt: new Date(),
+        resolvedBy: req.userId
+      },
+      { new: true }
+    );
+    
+    if (!errorLog) {
+      return res.status(404).json({ message: 'Error log not found' });
+    }
+    
+    res.json(errorLog);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
-const calculateAdPerformance = (ad) => {
-  const ctr = ad.metrics.impressions > 0 ? 
-    (ad.metrics.clicks / ad.metrics.impressions) * 100 : 0;
-  
-  if (ctr > 2) return 'excellent';
-  if (ctr > 1) return 'good';
-  if (ctr > 0.5) return 'average';
-  return 'poor';
-};
+router.post('/alerts/rules', auth, async (req, res) => {
+  try {
+    const rule = new AlertRule(req.body);
+    await rule.save();
+    res.status(201).json(rule);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/alerts/rules', auth, async (req, res) => {
+  try {
+    const rules = await AlertRule.find().sort({ createdAt: -1 });
+    res.json(rules);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/alerts/rules/:id', auth, async (req, res) => {
+  try {
+    const rule = await AlertRule.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
+    
+    if (!rule) {
+      return res.status(404).json({ message: 'Alert rule not found' });
+    }
+    
+    res.json(rule);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.delete('/alerts/rules/:id', auth, async (req, res) => {
+  try {
+    await AlertRule.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Alert rule deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/alerts/history', auth, async (req, res) => {
+  try {
+    const { rule, severity, resolved } = req.query;
+    const filter = {};
+    
+    if (rule) filter.rule = rule;
+    if (severity) filter.severity = severity;
+    if (resolved !== undefined) filter.resolved = resolved === 'true';
+    
+    const history = await AlertHistory.find(filter)
+      .populate('rule', 'name description')
+      .sort({ triggeredAt: -1 })
+      .limit(100);
+    
+    res.json(history);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/dashboards', auth, async (req, res) => {
+  try {
+    const dashboard = new Dashboard({
+      ...req.body,
+      owner: req.userId
+    });
+    await dashboard.save();
+    res.status(201).json(dashboard);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/dashboards', auth, async (req, res) => {
+  try {
+    const dashboards = await Dashboard.find({
+      $or: [
+        { owner: req.userId },
+        { sharedWith: req.userId },
+        { visibility: 'public' }
+      ]
+    }).populate('owner', 'username email');
+    
+    res.json(dashboards);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/dashboards/:id', auth, async (req, res) => {
+  try {
+    const dashboard = await Dashboard.findById(req.params.id)
+      .populate('owner', 'username email');
+    
+    if (!dashboard) {
+      return res.status(404).json({ message: 'Dashboard not found' });
+    }
+    
+    res.json(dashboard);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/dashboards/:id', auth, async (req, res) => {
+  try {
+    const dashboard = await Dashboard.findOneAndUpdate(
+      { _id: req.params.id, owner: req.userId },
+      req.body,
+      { new: true }
+    );
+    
+    if (!dashboard) {
+      return res.status(404).json({ message: 'Dashboard not found or access denied' });
+    }
+    
+    res.json(dashboard);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/reports/schedules', auth, async (req, res) => {
+  try {
+    const schedule = new ReportSchedule({
+      ...req.body,
+      createdBy: req.userId
+    });
+    await schedule.save();
+    res.status(201).json(schedule);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/reports/schedules', auth, async (req, res) => {
+  try {
+    const schedules = await ReportSchedule.find({ createdBy: req.userId })
+      .sort({ createdAt: -1 });
+    
+    res.json(schedules);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/reports/executions', auth, async (req, res) => {
+  try {
+    const { schedule } = req.query;
+    const filter = {};
+    
+    if (schedule) filter.schedule = schedule;
+    
+    const executions = await ReportExecution.find(filter)
+      .populate('schedule', 'name reportType')
+      .sort({ createdAt: -1 })
+      .limit(50);
+    
+    res.json(executions);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/performance', async (req, res) => {
+  try {
+    const metric = new PerformanceMetric(req.body);
+    await metric.save();
+    res.status(201).json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/performance', auth, async (req, res) => {
+  try {
+    const { endpoint, from, to } = req.query;
+    const filter = {};
+    
+    if (endpoint) filter.endpoint = endpoint;
+    if (from || to) {
+      filter.timestamp = {};
+      if (from) filter.timestamp.$gte = new Date(from);
+      if (to) filter.timestamp.$lte = new Date(to);
+    }
+    
+    const stats = await PerformanceMetric.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: '$endpoint',
+          avgDuration: { $avg: '$duration' },
+          minDuration: { $min: '$duration' },
+          maxDuration: { $max: '$duration' },
+          count: { $sum: 1 },
+          errors: { $sum: { $cond: [{ $gte: ['$statusCode', 400] }, 1, 0] } }
+        }
+      },
+      { $sort: { avgDuration: -1 } }
+    ]);
+    
+    res.json(stats);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/resources', auth, async (req, res) => {
+  try {
+    const usage = new ResourceUsage(req.body);
+    await usage.save();
+    res.status(201).json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/resources', auth, async (req, res) => {
+  try {
+    const { resource, service } = req.query;
+    const filter = {};
+    
+    if (resource) filter.resource = resource;
+    if (service) filter.service = service;
+    
+    const usage = await ResourceUsage.find(filter)
+      .sort({ timestamp: -1 })
+      .limit(100);
+    
+    res.json(usage);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/anomalies', auth, async (req, res) => {
+  try {
+    const { metric, resolved, severity } = req.query;
+    const filter = {};
+    
+    if (metric) filter.metric = metric;
+    if (resolved !== undefined) filter.resolved = resolved === 'true';
+    if (severity) filter.severity = severity;
+    
+    const anomalies = await AnomalyDetection.find(filter)
+      .sort({ detectedAt: -1 })
+      .limit(100);
+    
+    res.json(anomalies);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/anomalies/:id/resolve', auth, async (req, res) => {
+  try {
+    const anomaly = await AnomalyDetection.findByIdAndUpdate(
+      req.params.id,
+      {
+        resolved: true,
+        resolvedAt: new Date()
+      },
+      { new: true }
+    );
+    
+    if (!anomaly) {
+      return res.status(404).json({ message: 'Anomaly not found' });
+    }
+    
+    res.json(anomaly);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/heatmap', auth, async (req, res) => {
+  try {
+    const { feature, from, to } = req.query;
+    const filter = {};
+    
+    if (feature) filter.feature = feature;
+    if (from || to) {
+      filter.date = {};
+      if (from) filter.date.$gte = new Date(from);
+      if (to) filter.date.$lte = new Date(to);
+    }
+    
+    const heatmap = await UsageHeatmap.find(filter)
+      .sort({ date: -1, hour: -1 });
+    
+    res.json(heatmap);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/health', async (req, res) => {
+  try {
+    const services = await ServiceHealth.find()
+      .sort({ lastCheck: -1 });
+    
+    res.json(services);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/health/:service', auth, async (req, res) => {
+  try {
+    const health = await ServiceHealth.findOneAndUpdate(
+      { service: req.params.service },
+      {
+        ...req.body,
+        service: req.params.service,
+        lastCheck: new Date()
+      },
+      { upsert: true, new: true }
+    );
+    
+    res.json(health);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
 module.exports = router;
