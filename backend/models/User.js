@@ -67,8 +67,11 @@ const userSchema = new mongoose.Schema({
   relationshipStatus: String,
   website: String,
   phoneNumber: String,
+  phoneVerified: { type: Boolean, default: false },
   dateOfBirth: Date,
   gender: String,
+  isMinor: { type: Boolean, default: false },
+  ageVerified: { type: Boolean, default: false },
   status: {
     text: String,
     emoji: String,
@@ -131,8 +134,24 @@ const userSchema = new mongoose.Schema({
     notifications: {
       email: { type: Boolean, default: true },
       push: { type: Boolean, default: true },
-      sms: { type: Boolean, default: false }
-    }
+      sms: { type: Boolean, default: false },
+      sound: { type: Boolean, default: true },
+      quietHours: {
+        enabled: { type: Boolean, default: false },
+        start: String,
+        end: String
+      }
+    },
+    sessionTimeout: { type: Number, default: 3600 }
+  },
+  compliance: {
+    policyAcceptedVersion: String,
+    policyAcceptedAt: Date,
+    gdprConsent: { type: Boolean, default: false },
+    gdprConsentDate: Date,
+    marketingConsent: { type: Boolean, default: false },
+    cookieConsentId: { type: mongoose.Schema.Types.ObjectId, ref: 'CookieConsent' },
+    dataRetentionPeriod: { type: Number, default: 365 }
   },
   mutedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   restrictedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
@@ -205,6 +224,17 @@ userSchema.pre('save', async function(next) {
 
 userSchema.methods.comparePassword = async function(password) {
   return await bcrypt.compare(password, this.password);
+};
+
+userSchema.methods.isAgeRestricted = function() {
+  if (!this.dateOfBirth) return false;
+  const age = Math.floor((Date.now() - this.dateOfBirth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+  return age < 13;
+};
+
+userSchema.methods.getAge = function() {
+  if (!this.dateOfBirth) return null;
+  return Math.floor((Date.now() - this.dateOfBirth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
 };
 
 module.exports = mongoose.model('User', userSchema);

@@ -5,7 +5,11 @@ const notificationSchema = new mongoose.Schema({
   sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   type: { 
     type: String, 
-    enum: ['like', 'comment', 'follow', 'message', 'group_invite', 'marketplace', 'story_view', 'reel_like', 'call', 'live_stream'],
+    enum: [
+      'like', 'comment', 'follow', 'message', 'group_invite', 'marketplace', 
+      'story_view', 'reel_like', 'call', 'live_stream', 'mention', 'share',
+      'appeal_update', 'takedown_notice', 'system', 'security_alert'
+    ],
     required: true 
   },
   title: { type: String, required: true },
@@ -21,10 +25,29 @@ const notificationSchema = new mongoose.Schema({
   },
   isRead: { type: Boolean, default: false },
   readAt: Date,
-  priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' }
+  priority: { type: String, enum: ['low', 'medium', 'high', 'urgent'], default: 'medium' },
+  channels: {
+    inApp: { type: Boolean, default: true },
+    push: { type: Boolean, default: true },
+    email: { type: Boolean, default: false },
+    sms: { type: Boolean, default: false }
+  },
+  deliveryStatus: {
+    inApp: { type: String, enum: ['pending', 'delivered', 'failed'], default: 'delivered' },
+    push: { type: String, enum: ['pending', 'sent', 'delivered', 'failed'], default: 'pending' },
+    email: { type: String, enum: ['pending', 'sent', 'delivered', 'failed'], default: 'pending' },
+    sms: { type: String, enum: ['pending', 'sent', 'delivered', 'failed'], default: 'pending' }
+  },
+  batchId: String,
+  groupedWith: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Notification' }],
+  isGrouped: { type: Boolean, default: false },
+  groupCount: { type: Number, default: 1 },
+  expiresAt: Date
 }, { timestamps: true });
 
 notificationSchema.index({ recipient: 1, createdAt: -1 });
-notificationSchema.index({ isRead: 1 });
+notificationSchema.index({ recipient: 1, isRead: 1 });
+notificationSchema.index({ batchId: 1 });
+notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('Notification', notificationSchema);

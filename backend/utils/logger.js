@@ -1,9 +1,6 @@
 const winston = require('winston');
 const path = require('path');
 
-// Create logs directory if it doesn't exist
-const logsDir = path.join(__dirname, '../logs');
-
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.combine(
@@ -12,11 +9,16 @@ const logger = winston.createLogger({
     winston.format.splat(),
     winston.format.json()
   ),
-  defaultMeta: { service: 'nexos-api' },
+  defaultMeta: { service: 'nexos-backend' },
   transports: [
-    new winston.transports.File({ filename: path.join(logsDir, 'error.log'), level: 'error' }),
-    new winston.transports.File({ filename: path.join(logsDir, 'combined.log') }),
-  ],
+    new winston.transports.File({ 
+      filename: path.join(__dirname, '../logs/error.log'), 
+      level: 'error' 
+    }),
+    new winston.transports.File({ 
+      filename: path.join(__dirname, '../logs/combined.log') 
+    })
+  ]
 });
 
 if (process.env.NODE_ENV !== 'production') {
@@ -28,23 +30,4 @@ if (process.env.NODE_ENV !== 'production') {
   }));
 }
 
-// Request logging middleware
-const requestLogger = (req, res, next) => {
-  const start = Date.now();
-  
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    logger.info({
-      method: req.method,
-      url: req.originalUrl,
-      status: res.statusCode,
-      duration: `${duration}ms`,
-      ip: req.ip,
-      userAgent: req.get('user-agent')
-    });
-  });
-  
-  next();
-};
-
-module.exports = { logger, requestLogger };
+module.exports = logger;
